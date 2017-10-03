@@ -1,0 +1,110 @@
+package com.mh.mhglide40demo;
+
+import android.util.Log;
+
+import java.io.IOException;
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import okhttp3.Interceptor;
+import okhttp3.OkHttpClient;
+import okhttp3.Response;
+
+/**
+ * Created by Administrator on 2017/10/3.
+ */
+
+public class GlideProgressListener {
+
+    private GlideProgressListener() {
+    }
+
+    private static OkHttpClient glideOkHttpClient;
+
+    /**
+     * List of listeners
+     */
+    private static final List<WeakReference<IMHProgressListener>> glideProgressListeners = Collections.synchronizedList(new ArrayList<WeakReference<IMHProgressListener>>());
+
+    /**
+     * Interceptor listener
+     */
+    private static final IMHProgressListener glideDownloadProgressListener = new IMHProgressListener() {
+        @Override
+        public void update(long bytesRead, long contentLength, boolean done) {
+            System.out.println(""+bytesRead+"     "+contentLength);
+            for (int i = 0, j = glideProgressListeners.size(); i < j; i++) {
+                WeakReference<IMHProgressListener> weakListener = glideProgressListeners.get(i);
+                IMHProgressListener listener = weakListener.get();
+                if (listener == null) {
+                    glideProgressListeners.remove(i);
+                    i--;
+                } else {
+                    listener.update(bytesRead, contentLength, done);
+                }
+            }
+        }
+    };
+
+    /**
+     * Get singleton
+     * @return
+     */
+    public static OkHttpClient getGlideOkHttpClient(){
+        if(glideOkHttpClient == null){
+            glideOkHttpClient = new OkHttpClient.Builder()
+            .addNetworkInterceptor(new Interceptor() {
+                @Override
+                public Response intercept(Chain chain) throws IOException {
+                    Response originalResponse = chain.proceed(chain.request());
+                    return originalResponse.newBuilder()
+                            .body(new GlideResponeBody(originalResponse.body(), glideDownloadProgressListener))
+                            .build();
+                }
+            }).build();
+        }
+        return glideOkHttpClient;
+    }
+
+    /**
+     * Add new progress listener
+     * @param listener
+     */
+    public static void addGlideProgressListener(IMHProgressListener listener) {
+        if (listener != null) {
+            if (findGlideProgressListener(listener) != null) {
+                return;
+            } else {
+                glideProgressListeners.add(new WeakReference<IMHProgressListener>(listener));
+                Log.d(GlideProgressListener.class.getSimpleName(), "Glide download listener add");
+            }
+        }
+    }
+
+    /**
+     * Remove progress listener
+     * @param listener
+     */
+    public static void removeGlideProgressListener(IMHProgressListener listener) {
+        if (listener != null) {
+            WeakReference<IMHProgressListener> founded = findGlideProgressListener(listener);
+            if (founded != null) {
+                glideProgressListeners.remove(founded);
+                Log.d(GlideProgressListener.class.getSimpleName(), "Glide download listener remove");
+            }
+        }
+    }
+
+    private static WeakReference<IMHProgressListener> findGlideProgressListener(IMHProgressListener listener) {
+        List<WeakReference<IMHProgressListener>> listeners = glideProgressListeners;
+        for (int i = 0, j = listeners.size(); i < j; i++) {
+            WeakReference<IMHProgressListener> wpl = listeners.get(i);
+            if (wpl.get() == listener) {
+                return wpl;
+            }
+        }
+        return null;
+    }
+}
